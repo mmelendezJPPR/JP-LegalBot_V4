@@ -43,13 +43,22 @@ class HybridRetriever:
         self.faiss_path = faiss_path
         
         if self.embedding_client is not None:
-            self.index = faiss.read_index(self.faiss_path)
-            metas_path = os.path.join(os.path.dirname(self.faiss_path), "metas.jsonl")
             try:
-                self.metas = [json.loads(l) for l in open(metas_path, "r", encoding="utf-8")]
-            except FileNotFoundError:
-                # Si no existe metas.jsonl, crear lista vacía y advertir
-                print(f"⚠️ Advertencia: {metas_path} no encontrado, usando metadatos vacíos")
+                self.index = faiss.read_index(self.faiss_path)
+                metas_path = os.path.join(os.path.dirname(self.faiss_path), "metas.jsonl")
+                try:
+                    self.metas = [json.loads(l) for l in open(metas_path, "r", encoding="utf-8")]
+                except FileNotFoundError:
+                    # Si no existe metas.jsonl, crear lista vacía y advertir
+                    print(f"⚠️ Advertencia: {metas_path} no encontrado, usando metadatos vacíos")
+                    self.metas = []
+                print(f"✅ Índice FAISS cargado exitosamente desde {self.faiss_path}")
+            except Exception as e:
+                print(f"⚠️ Error cargando índice FAISS: {e}")
+                print("⚠️ Continuando sin embeddings - usando solo búsqueda textual")
+                self.embedding_client = None
+                self.embedding_model = None
+                self.index = None
                 self.metas = []
         else:
             self.index = None

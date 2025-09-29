@@ -150,6 +150,77 @@ def inicializar_base_datos():
             )
         """)
         
+        # Crear tabla FTS para búsqueda de texto completo
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunks USING fts5(
+                id, content, doc_id, heading_path, page_start, page_end
+            )
+        """)
+        
+        # Crear tabla de mensajes de conversación (para memoria)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT,
+                role TEXT,
+                content TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear tabla de métricas de rendimiento (duplicada para compatibilidad)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS performance_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                consulta_length INTEGER,
+                respuesta_length INTEGER,
+                sistema_usado TEXT,
+                confianza REAL,
+                tiempo_procesamiento REAL,
+                ip TEXT,
+                user_agent TEXT
+            )
+        """)
+        
+        # Crear tabla de aprendizaje del sistema
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS aprendizaje_sistema (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pregunta TEXT NOT NULL,
+                respuesta TEXT NOT NULL,
+                citations TEXT,
+                fact_type TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear tabla de auditoría de consentimiento
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                user_id TEXT,
+                action TEXT,
+                details TEXT
+            )
+        """)
+        
+        # Crear tabla de consentimiento de usuario
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_consent (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT UNIQUE,
+                consent_given BOOLEAN DEFAULT 0,
+                consent_timestamp DATETIME,
+                ip_address TEXT,
+                user_agent TEXT
+            )
+        """)
+        
+        # Inicializar también la base de datos de aprendizaje híbrido
+        init_hybrid_knowledge_db()
+        
         # Crear índices para mejor rendimiento
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversaciones_timestamp ON conversaciones(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversaciones_usuario ON conversaciones(usuario)")
@@ -162,6 +233,63 @@ def inicializar_base_datos():
         
     except Exception as e:
         print(f"Error inicializando base de datos: {e}")
+        return False
+
+def init_hybrid_knowledge_db():
+    """Inicializa la base de datos híbrida de conocimiento"""
+    try:
+        conn = get_learning_db_connection()
+        if not conn:
+            print("⚠️ No se pudo conectar a base de datos híbrida")
+            return False
+            
+        cursor = conn.cursor()
+        
+        # Crear tabla de conversaciones
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                specialist_type TEXT,
+                session_id TEXT,
+                started_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear tabla de mensajes de conversación
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT,
+                role TEXT,
+                content TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear tabla de métricas de rendimiento
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS performance_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                consulta_length INTEGER,
+                respuesta_length INTEGER,
+                sistema_usado TEXT,
+                confianza REAL,
+                tiempo_procesamiento REAL,
+                ip TEXT,
+                user_agent TEXT
+            )
+        """)
+        
+        conn.commit()
+        conn.close()
+        
+        print("✅ Base de datos híbrida inicializada")
+        return True
+        
+    except Exception as e:
+        print(f"⚠️ Error inicializando base de datos híbrida: {e}")
         return False
 logger = logging.getLogger(__name__)
 
@@ -465,6 +593,13 @@ def log_conversation_message(conversation_id: str, role: str, content: str,
             return message_id
         
         cursor = conn.cursor()
+        # Verificar si la tabla existe
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_messages'")
+        if not cursor.fetchone():
+            logger.debug("Tabla conversation_messages no existe, omitiendo log")
+            conn.close()
+            return message_id
+            
         cursor.execute("""
             INSERT INTO conversation_messages 
             (id, conversation_id, role, content, specialist_context, 
@@ -492,6 +627,13 @@ def log_performance_metric(metric_type: str, metric_value: float,
             return
         
         cursor = conn.cursor()
+        # Verificar si la tabla existe
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='performance_metrics'")
+        if not cursor.fetchone():
+            logger.debug("Tabla performance_metrics no existe, omitiendo log")
+            conn.close()
+            return
+            
         cursor.execute("""
             INSERT INTO performance_metrics (id, metric_type, metric_value, specialist_area, context_data)
             VALUES (?, ?, ?, ?, ?)
@@ -589,6 +731,15 @@ try:
                 return "No se pudo conectar a la base de datos."
             
             cursor = conn.cursor()
+            
+            # Verificar si las tablas necesarias existen
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('fts_chunks', 'chunks_meta')")
+            existing_tables = [row[0] for row in cursor.fetchall()]
+            
+            if 'fts_chunks' not in existing_tables:
+                logger.debug("Tabla fts_chunks no existe, usando búsqueda básica")
+                return f"Consulta procesada: {consulta[:100]}..."
+            
             results = []
             
             # Estrategia 1: Intentar búsqueda FTS con términos limpios
@@ -596,13 +747,21 @@ try:
                 # Limpiar consulta para FTS (quitar caracteres problemáticos)
                 consulta_fts = consulta.replace("-", " ").replace(".", " ").replace(",", " ")
                 # fts_chunks stores text in `chunk_text` and metadata in chunks_meta
-                cursor.execute("""
-                    SELECT f.rowid, f.chunk_text, m.doc_id, m.heading_path, m.page_start, m.page_end
-                    FROM fts_chunks f
-                    LEFT JOIN chunks_meta m ON m.chunk_id = f.chunk_id
-                    WHERE fts_chunks MATCH ?
-                    LIMIT 5
-                """, (consulta_fts,))
+                if 'chunks_meta' in existing_tables:
+                    cursor.execute("""
+                        SELECT f.rowid, f.chunk_text, m.doc_id, m.heading_path, m.page_start, m.page_end
+                        FROM fts_chunks f
+                        LEFT JOIN chunks_meta m ON m.chunk_id = f.chunk_id
+                        WHERE fts_chunks MATCH ?
+                        LIMIT 5
+                    """, (consulta_fts,))
+                else:
+                    cursor.execute("""
+                        SELECT rowid, chunk_text, NULL, NULL, NULL, NULL
+                        FROM fts_chunks
+                        WHERE fts_chunks MATCH ?
+                        LIMIT 5
+                    """, (consulta_fts,))
                 results = cursor.fetchall()
                 logger.debug(f"Búsqueda FTS exitosa: {len(results)} resultados")
             except Exception as e:
