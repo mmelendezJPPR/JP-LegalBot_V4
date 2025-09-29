@@ -7,7 +7,7 @@ Configura estas variables de entorno en el panel de Render:
 ### 🔑 Azure OpenAI (OBLIGATORIAS)
 ```
 AZURE_OPENAI_ENDPOINT=https://legalbotfoundry.cognitiveservices.azure.com/
-AZURE_OPENAI_KEY=lKAUXrhG1ttvP3Q9TnQJcO3GlgJhOs7sQakiTwLU6d51Nuh7ckMoJQQJ99BIACHYHv6XJ3w3AAAAACOGPaZO
+AZURE_OPENAI_KEY=[tu_clave_azure_openai_aqui]
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4.1
 ```
