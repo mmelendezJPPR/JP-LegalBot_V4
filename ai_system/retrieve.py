@@ -110,7 +110,7 @@ class HybridRetriever:
             qmarks = ",".join("?"*len(chunk_ids))
             # fts_chunks stores text in column `chunk_text`
             cur = con.execute(f"SELECT rowid, chunk_text FROM fts_chunks WHERE rowid IN ({qmarks})", chunk_ids)
-            return {str(r[0]): r[1] for r in cur.fetchall()}
+            return {r[0]: r[1] for r in cur.fetchall()}
 
     def hybrid(self, query: str, k_vec=12, k_lex=12, final_k=6) -> List[Dict]:
         vec = self.search_vectors(query, k=k_vec)

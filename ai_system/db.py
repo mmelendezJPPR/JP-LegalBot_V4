@@ -37,9 +37,19 @@ def upsert_chunk(con, chunk_id, doc_id, page_start, page_end, heading_path, text
 def fts_search(con, query: str, limit: int = 24):
     # Adaptado para la estructura real de la base de datos
     try:
+        # Preprocesar query para FTS5: remover caracteres especiales que puedan confundir el parser
+        import re
+        # Mantener solo letras, números, espacios y comillas simples
+        clean_query = re.sub(r'[^\w\s\'\"]', ' ', query)
+        # Reemplazar múltiples espacios con uno solo
+        clean_query = re.sub(r'\s+', ' ', clean_query).strip()
+        
+        if not clean_query:
+            clean_query = 'permiso'  # fallback
+        
         cur = con.execute("""SELECT rowid, chunk_text, doc_id, heading_path, page_start, page_end,
                                snippet(fts_chunks, 0, '«', '»', ' … ', 10) AS snip
-                            FROM fts_chunks WHERE fts_chunks MATCH ? LIMIT ?""", (query, limit))
+                            FROM fts_chunks WHERE fts_chunks MATCH ? LIMIT ?""", (clean_query, limit))
         results = []
         for row in cur.fetchall():
             # Convertir a formato esperado por el sistema

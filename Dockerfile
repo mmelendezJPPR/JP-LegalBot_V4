@@ -1,36 +1,26 @@
-# Usar imagen oficial de Python
+# Usar imagen oficial de Python optimizada para Render
 FROM python:3.11-slim
 
-# Instalar dependencias del sistema necesarias para SQL Server
+# Instalar dependencias del sistema mínimas
 RUN apt-get update && apt-get install -y \
     curl \
-    apt-transport-https \
-    gnupg \
-    unixodbc \
-    unixodbc-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Agregar repositorio de Microsoft para ODBC Driver
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list
-
-# Instalar ODBC Driver 17 para SQL Server
-RUN apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
     && rm -rf /var/lib/apt/lists/*
 
 # Establecer directorio de trabajo
 WORKDIR /app
 
-# Copiar requirements y instalar dependencias Python
+# Copiar requirements e instalar dependencias Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código de la aplicación
 COPY . .
 
-# Exponer puerto
-EXPOSE 5000
+# Crear directorio para bases de datos
+RUN mkdir -p database
+
+# Exponer puerto dinámico (Render asigna automáticamente)
+EXPOSE $PORT
 
 # Comando para ejecutar la aplicación
-CMD ["python", "app.py"]
+CMD ["sh", "-c", "python scripts/init_render.py && python app.py"]

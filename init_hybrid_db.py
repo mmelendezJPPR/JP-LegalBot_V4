@@ -68,7 +68,7 @@ def init_hybrid_knowledge_db():
         # Crear tabla FTS para búsqueda de texto completo
         cursor.execute('''
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunks USING fts5(
-                id, content, doc_id, heading_path, page_start, page_end
+                chunk_text, chunk_id, doc_id, heading_path, page_start, page_end
             )
         ''')
 
