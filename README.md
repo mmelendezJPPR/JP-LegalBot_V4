@@ -37,11 +37,6 @@ OPENAI_API_KEY=tu_api_key_aqui
 python app.py
 ```
 
-### Acceso al Sistema
-- **URL**: http://127.0.0.1:5000
-- **Usuario**: admin@juntaplanificacion.pr.gov  
-- **Contraseña**: admin123
-
 ### Gestión de Usuarios
 ```bash
 # Administrar usuarios
@@ -53,30 +48,7 @@ python scripts/init_usuarios.py
 
 ## 🏗️ Arquitectura del Sistema
 
-### 📂 Estructura del Proyecto
 
-```
-📂 JP_IA/
-├── 🐍 app.py                    # Aplicación Flask principal
-├── 🔐 simple_auth.py           # Sistema de autenticación
-├── 🤖 sistema_hibrido.py       # Router inteligente de consultas
-├── 🧠 experto_planificacion.py # Sistema experto base
-├── ⚡ mini_especialistas.py    # 6 especialistas dedicados
-├── 📋 requirements.txt         # Dependencias del proyecto
-├── 🌐 templates/
-│   ├── index.html              # Interfaz de chat principal
-│   └── login.html              # Página de autenticación
-├── 🎨 static/
-│   ├── css/style.css           # Estilos de la aplicación
-│   ├── js/app.js              # Lógica del chat frontend
-│   └── 🖼️ JP_V2.png           # Logos e imágenes
-├── 📊 data/                    # Base de conocimiento
-│   ├── TOMO1-12_*.txt         # Reglamentos de planificación
-│   └── RespuestasParaChatBot/ # Respuestas pre-generadas
-└── 🛠️ utils/                  # Utilidades del sistema
-    ├── cargador_tomos.py      # Carga de documentos
-    └── procesador_texto.py    # Procesamiento de texto
-```
 
 ## 🎯 Especialistas Disponibles
 
