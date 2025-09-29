@@ -76,7 +76,7 @@ def init_hybrid_knowledge_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_created ON conversation_messages(created_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON conversation_messages(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON performance_metrics(timestamp)')
 
         # Confirmar cambios

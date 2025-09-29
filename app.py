@@ -235,6 +235,17 @@ def inicializar_base_datos():
         print(f"Error inicializando base de datos: {e}")
         return False
 
+def get_learning_db_connection():
+    """Obtener conexión a la base de datos de aprendizaje"""
+    db_path = "database/hybrid_knowledge.db"
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row  # Para acceso por nombre de columna
+        return conn
+    except Exception as e:
+        logger.error(f"Error conectando a base de datos de aprendizaje: {e}")
+        return None
+
 def init_hybrid_knowledge_db():
     """Inicializa la base de datos híbrida de conocimiento"""
     try:
@@ -545,17 +556,6 @@ def guardar_conversacion_simple(usuario, pregunta, respuesta):
         return False
 
 # ===== SISTEMA DE APRENDIZAJE AUTOMÁTICO =====
-def get_learning_db_connection():
-    """Obtener conexión a la base de datos de aprendizaje"""
-    db_path = "database/hybrid_knowledge.db"
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row  # Para acceso por nombre de columna
-        return conn
-    except Exception as e:
-        logger.error(f"Error conectando a base de datos de aprendizaje: {e}")
-        return None
-
 def log_conversation_start(user_id: str, specialist_type: str, session_id: str) -> str:
     """Registrar inicio de conversación y retornar conversation_id"""
     try:
