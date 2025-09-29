@@ -15,6 +15,7 @@ from typing import List, Dict, Optional
 import uuid
 import json
 import logging
+import os
 
 from .db import get_conn, insert_knowledge_fact, upsert_faq
 from .config import DB_PATH
@@ -200,8 +201,18 @@ def ingest_conversations(source_db_path: Optional[str] = None, limit: Optional[i
     from datetime import datetime
 
     try:
-        # Determinar ruta de origen: usar 'database/conversaciones.db'
-        source = Path(source_db_path) if source_db_path else Path('database') / 'conversaciones.db'
+        # Determinar ruta de origen: preferir source_db_path -> CONVERSACIONES_DB/DATABASE_URL -> default 'database/conversaciones.db'
+        env_src = source_db_path or (os.getenv('CONVERSACIONES_DB') or os.getenv('DATABASE_URL'))
+        if env_src:
+            if isinstance(env_src, str) and env_src.startswith('sqlite'):
+                if env_src.startswith('sqlite:///'):
+                    env_src = env_src.replace('sqlite:///', '', 1)
+                elif env_src.startswith('sqlite://'):
+                    env_src = env_src.replace('sqlite://', '', 1)
+            source = Path(env_src)
+        else:
+            source = Path('database') / 'conversaciones.db'
+
         if not source.exists():
             return {'processed': 0, 'errors': 1, 'message': f'Source DB not found: {source}'}
 

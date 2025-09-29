@@ -83,6 +83,13 @@ import sqlite3
 import uuid
 from datetime import datetime
 
+# On Windows terminals the default stdout encoding may not support emojis used in logs.
+# Reconfigure stdout to UTF-8 with replacement to avoid UnicodeEncodeError during import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # Importar el sistema de prompts profesional desde la nueva estructura
 try:
     from ai_system.prompts import SYSTEM_RAG, USER_TEMPLATE
@@ -100,19 +107,74 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
+# Cargar variables de entorno lo antes posible para que otros módulos
+# (ai_system.*) que usan os.getenv() en import-time reciban valores.
+load_dotenv()
+
+
 # Función de inicialización de base de datos
 def inicializar_base_datos():
     """Inicializa la base de datos SQLite si no existe"""
     from pathlib import Path
+    from urllib.parse import urlparse
     
-    # Crear directorio database si no existe
+    # Determinar ruta de la base de datos principal usando variables de entorno
+    # Prioridad: CONVERSACIONES_DB -> DATABASE_URL -> default local database/conversaciones.db
+    conv_env = os.getenv('CONVERSACIONES_DB') or os.getenv('DATABASE_URL') or 'database/conversaciones.db'
+
+    # Si DATABASE_URL es un URL (por ejemplo sqlite:///path), parsearlo
     db_dir = Path('database')
     db_dir.mkdir(exist_ok=True)
-    
-    # Ruta de la base de datos principal
-    db_path = db_dir / 'conversaciones.db'
+
+    db_path = None
+    try:
+        parsed = urlparse(conv_env)
+        scheme = parsed.scheme or ''
+    except Exception:
+        parsed = None
+        scheme = ''
+
+    # Soportar formatos como: sqlite:///absolute/path or sqlite://relative/path or direct filesystem path
+    if isinstance(conv_env, str) and conv_env.startswith('sqlite'):
+        # quitar prefijo sqlite:/// o sqlite://
+        if conv_env.startswith('sqlite:///'):
+            candidate = conv_env.replace('sqlite:///', '', 1)
+        elif conv_env.startswith('sqlite://'):
+            candidate = conv_env.replace('sqlite://', '', 1)
+        else:
+            candidate = conv_env
+
+        candidate_path = Path(candidate)
+        if not candidate_path.is_absolute():
+            # avoid doubling 'database/database/...'
+            if len(candidate_path.parts) > 0 and candidate_path.parts[0] == 'database':
+                db_path = candidate_path
+            else:
+                db_path = db_dir / candidate_path
+        else:
+            db_path = candidate_path
+    elif scheme in ('postgres', 'postgresql', 'mysql'):
+        # External managed DB configured via DATABASE_URL - skip creating local sqlite DB
+        print(f"⚠️ DATABASE_URL points to external DB ({scheme}). Skipping local sqlite init.")
+        return True
+    else:
+        # tratar conv_env como ruta de fichero
+        candidate_path = Path(conv_env)
+        if not candidate_path.is_absolute():
+            if len(candidate_path.parts) > 0 and candidate_path.parts[0] == 'database':
+                db_path = candidate_path
+            else:
+                db_path = db_dir / candidate_path
+        else:
+            db_path = candidate_path
     
     try:
+        # Ensure parent directories exist
+        try:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
         # Conectar a la base de datos (se crea si no existe)
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
@@ -217,10 +279,9 @@ def inicializar_base_datos():
                 user_agent TEXT
             )
         """)
-        
         # Inicializar también la base de datos de aprendizaje híbrido
         init_hybrid_knowledge_db()
-        
+
         # Crear índices para mejor rendimiento
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversaciones_timestamp ON conversaciones(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversaciones_usuario ON conversaciones(usuario)")
@@ -237,7 +298,21 @@ def inicializar_base_datos():
 
 def get_learning_db_connection():
     """Obtener conexión a la base de datos de aprendizaje"""
-    db_path = "database/hybrid_knowledge.db"
+    # Allow overriding via env var DB_PATH or DATABASE_URL
+    db_path = os.getenv('DB_PATH') or os.getenv('DATABASE_URL') or 'database/hybrid_knowledge.db'
+    # If DATABASE_URL looks like sqlite:///path, convert to filesystem path
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(db_path)
+        if parsed.scheme and parsed.scheme.startswith('sqlite'):
+            # strip sqlite:/// prefix
+            if db_path.startswith('sqlite:///'):
+                db_path = db_path.replace('sqlite:///', '', 1)
+            elif db_path.startswith('sqlite://'):
+                db_path = db_path.replace('sqlite://', '', 1)
+    except Exception:
+        pass
+
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row  # Para acceso por nombre de columna
@@ -245,6 +320,21 @@ def get_learning_db_connection():
     except Exception as e:
         logger.error(f"Error conectando a base de datos de aprendizaje: {e}")
         return None
+
+
+def resolve_conversaciones_db_path() -> str:
+    """Return the resolved filesystem path or URL for the conversations DB.
+
+    Priority: CONVERSACIONES_DB -> DATABASE_URL -> default 'database/conversaciones.db'
+    """
+    conv_env = os.getenv('CONVERSACIONES_DB') or os.getenv('DATABASE_URL') or 'database/conversaciones.db'
+    # normalize sqlite:/// urls
+    if isinstance(conv_env, str) and conv_env.startswith('sqlite'):
+        if conv_env.startswith('sqlite:///'):
+            return conv_env.replace('sqlite:///', '', 1)
+        if conv_env.startswith('sqlite://'):
+            return conv_env.replace('sqlite://', '', 1)
+    return conv_env
 
 def init_hybrid_knowledge_db():
     """Inicializa la base de datos híbrida de conocimiento"""
@@ -355,8 +445,9 @@ except Exception as e:
     MEMORY_AVAILABLE = False
     logger.info(f"ℹ️ Módulo ai_system.memory no disponible: {e}")
 
-# Cargar variables de entorno
-load_dotenv()
+# Nota: `load_dotenv()` ya fue llamado al inicio del archivo para permitir que
+# módulos importados más abajo (ai_system.*) vean variables de entorno definidas
+# en un archivo .env durante desarrollo.
 
 # ===== VALIDACIÓN DE VARIABLES DE ENTORNO =====
 def validar_variables_entorno():
@@ -446,7 +537,22 @@ def add_security_headers(response):
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
         "img-src 'self' data: https:; "
     )
-    
+    return response
+
+@app.route('/debug-db')
+def debug_db():
+    """Return a small JSON with resolved DB paths for troubleshooting on Render."""
+    conv = resolve_conversaciones_db_path()
+    hybrid = os.getenv('DB_PATH') or os.getenv('DATABASE_URL') or 'database/hybrid_knowledge.db'
+    is_sqlite = isinstance(conv, str) and (conv.startswith('sqlite') or conv.endswith('.db') or conv.startswith('/') or conv.startswith('.') or '\\' in conv)
+    return jsonify({
+        'conversaciones': conv,
+        'hybrid': hybrid,
+        'conversaciones_is_sqlite': bool(is_sqlite),
+        'env_CONVERSACIONES_DB': os.getenv('CONVERSACIONES_DB'),
+        'env_DATABASE_URL': os.getenv('DATABASE_URL'),
+    })
+
     return response
 
 # Handler para shutdown graceful en Render - DESHABILITADO PARA DESARROLLO LOCAL

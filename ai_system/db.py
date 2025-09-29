@@ -1,5 +1,20 @@
-import sqlite3, json
+import sqlite3, json, os
 from contextlib import contextmanager
+from urllib.parse import urlparse
+
+
+def resolve_db_path(default_path: str):
+    """Resolve DB path from env vars. Supports DATABASE_URL or DB_PATH or fallback."""
+    env = os.getenv('DATABASE_URL') or os.getenv('DB_PATH') or os.getenv('CONVERSACIONES_DB')
+    if not env:
+        return default_path
+    # support sqlite:/// prefixed urls
+    if env.startswith('sqlite'):
+        if env.startswith('sqlite:///'):
+            return env.replace('sqlite:///', '', 1)
+        if env.startswith('sqlite://'):
+            return env.replace('sqlite://', '', 1)
+    return env
 
 @contextmanager
 def get_conn(db_path: str):

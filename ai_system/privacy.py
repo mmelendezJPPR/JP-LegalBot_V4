@@ -10,7 +10,19 @@ _PHONE_RE = re.compile(r"\b(\+?\d{1,3}[\s-]?)?(?:\d{2,4}[\s-]?){2,4}\d{2,4}\b")
 _ID_RE = re.compile(r"\b\d{6,15}\b")
 _COORD_RE = re.compile(r"\b-?\d{1,3}\.\d+[, ]\s*-?\d{1,3}\.\d+\b")
 
-DB_PATH = os.getenv('CONVERSACIONES_DB', 'database/conversaciones.db')
+_env_db = os.getenv('CONVERSACIONES_DB') or os.getenv('DATABASE_URL') or 'database/conversaciones.db'
+if isinstance(_env_db, str) and _env_db.startswith('sqlite'):
+    if _env_db.startswith('sqlite:///'):
+        _env_db = _env_db.replace('sqlite:///', '', 1)
+    elif _env_db.startswith('sqlite://'):
+        _env_db = _env_db.replace('sqlite://', '', 1)
+
+from pathlib import Path
+_db_path = Path(_env_db)
+if not _db_path.is_absolute():
+    _db_path = Path(__file__).resolve().parents[1] / _db_path
+
+DB_PATH = str(_db_path)
 
 def _get_conn():
     conn = sqlite3.connect(DB_PATH)
